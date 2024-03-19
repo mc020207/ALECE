@@ -178,9 +178,10 @@ def load_data(args):
     print('Processing data...')
 
     (train_features, train_cards) = valid_datasets((train_features, train_cards))
-
+    # valid_datasets函数没有什么用
     train_labels = cards_to_labels(train_cards, args)
-
+    # 转换label的数据类型并且如果 args.card_log_scale
+    # labels = np.log(cards) / args.scaling_ratio
     _n_test = test_features.shape[0]
     (test_features, test_cards) = valid_datasets((test_features, test_cards))
     assert test_features.shape[0] == _n_test
@@ -224,11 +225,11 @@ def load_data(args):
     train_data = organize_data(train_data, args)
     validation_data = organize_data(validation_data, args)
     test_data = organize_data(test_data, args)
-
+    # organize_data分出直方图特征和查询特征
     train_data = data_compile(train_data, args)
     validation_data = data_compile(validation_data, args)
     test_data = data_compile(test_data, args)
-
+    # 转化为TensorFlow的张量
     return (train_data, validation_data, test_data), q_error_dir, ckpt_dir
 
 

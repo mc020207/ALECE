@@ -232,7 +232,12 @@ def _load_data_from_workload(args, wl_type=None):
     tables_info = get_tables_info(args)
     table_no_map, no_table_map, table_card_list, attr_no_map_list \
         , attr_no_types_list, attr_ranges_list = tables_info
-
+    # table_no_map: 表到idx的dic
+    # no_table_map: idx到表的dic
+    # table_card_list: 每个表的记录条数
+    # attr_no_map_list: 每个表列名到idx
+    # attr_no_types_list: 每个表列的类型（int为0，flaot为1）
+    # attr_ranges_list: 每个表列的数据范围，（若为int则为[min-0.5,max+0.5]，float为[min-1e-6,max+1e-6]
     num_attrs = 0
     for attr_no_map in attr_no_map_list:
         num_attrs += len(attr_no_map)
@@ -250,14 +255,38 @@ def _load_data_from_workload(args, wl_type=None):
         delim="||",
         baseline_results_delim="|*|"
     )
+    # base_queries_info 由下面部分组成
+    # possible_join_attrs: 整个数据集中join方法的集合（去重），每一条形式如下[table1,table_attr1,table2,table_attr2]
+    # join_conds_list: 每一次询问的join方法数组，每一条形式如下[table1,table_attr1,table2,table_attr2]
+    # attr_range_conds_list: 每一次询问的所有列的数据范围，具体记录方法和attr_ranges_list相似
+    # true_card_list: 每一条询问的真实基数
+    # cartesian_join_card_list： 未知
+    # natural_join_card_list: 未知
+    # join_type_list: 未知
+    # relevant_tables_list: 每一次询问所有有关的表编号
+    # filter_conds_list: 有谓词限制的列的数据范围
+    # baseline_results: 若干个baseline方法的估计基数
     base_possible_join_attrs = base_queries_info[0]
 
     qF = queryFeature(table_no_map, attr_no_map_list, attr_no_types_list, attr_ranges_list, base_possible_join_attrs)
 
+    # qF中值得注意的有join_id
+    # 令max_attr=所有表中列数最多的列数 M=num_table*max_attr
+    # join的形式为[table1,table_attr1,table2,table_attr2]
+    # id1=table1*max_attr+table_attr1 id2同理
+    # join_id=id1*M+id2
+    # n_possible_joins给出了所有的join_id的数量
     DH = histogram.databaseHistogram(tables_info, workload_path, args.n_bins, histogram_ckpt_dir)
+    # 读入workload中标记的若干csv文件并建立直方图
     DH.build_histogram_features(workload_path)
+    # 处理数据集中的查询语句和数据库修改语句，保存所有中间情况的直方图
     query_info_strs, query_ids, split_idxes, histogram_features, num_inserts_before_queries, train_idxes, train_sub_idxes, test_idxes, test_sub_idxes, test_single_idxes = DH.current_data()
-
+    # query_info_strs: 记录所有的查询语句和真实的基数 格式为sql||基数
+    # query_ids: 数据集中语句会有一个编号，暂时感觉没有什么用
+    # split_idxes: 暂时没有用
+    # histogram_features: 每一个查询语句后的直方图，每个列分40份，43个特征一共1720个数
+    # num_inserts_before_queries: 每一次查询语句前有多少数据库修改语句
+    # train_idxes,train_sub_idxes,test_idxes,test_sub_idxes,test_single_idxes: 每一种类型的查询语句在query_info_strs中的下标
     queries_info = parse_queries(
         query_info_strs,
         table_no_map,
@@ -271,7 +300,16 @@ def _load_data_from_workload(args, wl_type=None):
 
     possible_join_attrs, join_conds_list, attr_range_conds_list, true_card_list, cartesian_join_card_list, natural_join_card_list \
         , join_type_list, relevant_tables_list, selection_conds_list, baseline_results = queries_info
-
+    # possible_join_attrs: 整个数据集中join方法的集合（去重），每一条形式如下[table1,table_attr1,table2,table_attr2]
+    # join_conds_list: 每一次询问的join方法数组，每一条形式如下[table1,table_attr1,table2,table_attr2]
+    # attr_range_conds_list: 每一次询问的所有列的数据范围，具体记录方法和attr_ranges_list相似
+    # true_card_list: 每一条询问的真实基数
+    # cartesian_join_card_list： 未知
+    # natural_join_card_list: 未知
+    # join_type_list: 未知
+    # relevant_tables_list: 每一次询问所有有关的表编号
+    # filter_conds_list: 有谓词限制的列的数据范围
+    # baseline_results: 若干个baseline方法的估计基数
     if cartesian_join_card_list[0] is None:
         cartesian_join_card_list = None
 
@@ -289,7 +327,11 @@ def _load_data_from_workload(args, wl_type=None):
         relevant_tables_list
     )
     (query_part_features, true_cards, cartesian_join_cards, natural_join_cards, n_possible_joins) = query_part_data
-
+    # query_part_features:对每一个查询语句的编码[数据表编号的onhot,表之间聚合条件的onehot,每一个列的范围]
+    # true_cards:真实基数
+    # cartesian_join_cards:未知
+    # natural_join_cards:未知
+    # n_possible_joins:所有可能的聚合条件个数
     all_features = np.concatenate([histogram_features, query_part_features], axis=1, dtype=histogram_features.dtype)
 
     histogram_feature_dim = histogram_features.shape[1]
@@ -337,7 +379,7 @@ def load_workload_data(args):
     if args.test_wl_type == args.wl_type:
         (all_features_1, all_cards_1, _, train_idxes, train_sub_idxes, test_idxes, test_sub_idxes,
          test_single_idxes, meta_infos) = _load_data_from_workload(args)
-
+        # _load_data_from_workload函数中有详细注释
         all_features_2 = all_features_1
         all_cards_2 = all_cards_1
     else:
@@ -382,6 +424,8 @@ def load_workload_data(args):
 
 
     all_train_features, test_sub_features, join_pattern_dim = normalize_data(all_train_features, [test_sub_features], histogram_feature_dim, n_possible_joins)
+    # 在train的query_feature部分做正则化，随后按照test中的所有query_feature根据train的标准差和平均数做正则化
+    # 删去所有在train中没有任何变化的特征
     test_sub_features = test_sub_features[0]
     feature_dim = all_train_features.shape[1]
 
